@@ -19,35 +19,7 @@ ${prompt.content}`;
 
     try {
       const raw = await this.callClaude(userPrompt);
-      const cleaned = raw.trim().toLowerCase();
-
-      // Normalize various LLM outputs into our four canonical categories
-      if (cleaned.includes('spam') || cleaned.includes('junk') || cleaned.includes('phishing') || cleaned.includes('scam')) {
-        return 'Spam';
-      }
-
-      if (cleaned.includes('newsletter') || cleaned.includes('marketing') || cleaned.includes('promo') || cleaned.includes('promotion') || cleaned.includes('digest')) {
-        return 'Newsletter';
-      }
-
-      if (
-        cleaned.includes('to-do') ||
-        cleaned.includes('todo') ||
-        cleaned.includes('to do') ||
-        cleaned.includes('task') ||
-        cleaned.includes('action item') ||
-        cleaned.includes('follow-up') ||
-        cleaned.includes('follow up')
-      ) {
-        return 'To-Do';
-      }
-
-      if (cleaned.includes('important') || cleaned.includes('urgent') || cleaned.includes('high priority')) {
-        return 'Important';
-      }
-
-      // Fallback: treat as Important so it still shows up clearly
-      return 'Important';
+      return raw.trim();
     } catch (error) {
       console.error('Categorization error:', error);
       return 'Uncategorized';

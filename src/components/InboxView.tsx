@@ -97,78 +97,28 @@ export default function InboxView() {
         return;
       }
 
-      const MAX_PASSES = 3;
-      let totalProcessed = 0;
-      let totalFailed = 0;
+      for (const email of emails) {
+        // Original behavior: skip already processed emails
+        if (email.is_processed) continue;
 
-      for (let pass = 1; pass <= MAX_PASSES; pass++) {
-        const currentEmails = await emailService.getAllEmails();
+        const category = await llmService.categorizeEmail(email, categorizationPrompt);
+        await emailService.updateEmail(email.id, {
+          category,
+          is_processed: true
+        });
 
-        let processedThisPass = 0;
-        let failedThisPass = 0;
-
-        for (const email of currentEmails) {
-          // Reprocess emails that are not processed OR that have no category/are Uncategorized
-          const needsProcessing =
-            !email.is_processed ||
-            !email.category ||
-            email.category.toLowerCase() === 'uncategorized';
-
-          if (!needsProcessing) continue;
-
-          try {
-            const category = await llmService.categorizeEmail(email, categorizationPrompt);
-            await emailService.updateEmail(email.id, {
-              category,
-              is_processed: true
-            });
-
-            const extractedItems = await llmService.extractActionItems(email, actionItemPrompt);
-            for (const item of extractedItems) {
-              await emailService.createActionItem({
-                email_id: email.id,
-                task: item.task,
-                deadline: item.deadline
-              });
-            }
-
-            processedThisPass += 1;
-            totalProcessed += 1;
-
-            // Small delay to avoid hitting rate limits too quickly
-            await new Promise(resolve => setTimeout(resolve, 250));
-          } catch (err) {
-            console.error('Error processing individual email:', email.id, err);
-            failedThisPass += 1;
-            totalFailed += 1;
-            // Continue to next email instead of aborting the whole batch
-          }
+        const extractedItems = await llmService.extractActionItems(email, actionItemPrompt);
+        for (const item of extractedItems) {
+          await emailService.createActionItem({
+            email_id: email.id,
+            task: item.task,
+            deadline: item.deadline
+          });
         }
-
-        // If there were no failures or no progress this pass, stop looping
-        if (failedThisPass === 0 || processedThisPass === 0) {
-          break;
-        }
-
-        // Optional small pause between passes
-        await new Promise(resolve => setTimeout(resolve, 1000));
       }
 
       await loadEmails();
-
-      // Figure out how many emails still need processing
-      const finalEmails = await emailService.getAllEmails();
-      const remaining = finalEmails.filter(e => !e.is_processed || !e.category || e.category.toLowerCase() === 'uncategorized').length;
-
-      if (remaining === 0) {
-        alert('All emails processed successfully!');
-      } else if (totalProcessed > 0) {
-        alert(`Processed ${totalProcessed} emails. ${remaining} still need processing; check console for details.`);
-      } else if (totalFailed > 0) {
-        alert('All emails failed to process. Please check the console for error details.');
-      } else {
-        alert('No emails needed processing.');
-      }
+      alert('All emails processed successfully!');
     } catch (error) {
       console.error('Error processing emails:', error);
       alert('Error processing emails. Check console for details.');
