@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { Send, Bot, User, Loader2, Mail } from 'lucide-react';
-import { Email } from '../lib/supabase';
+import { Email, Prompt } from '../lib/supabase';
 import { emailService } from '../services/emailService';
+import { promptService } from '../services/promptService';
 import { llmService } from '../services/llmService';
 
 interface Message {
@@ -19,23 +20,28 @@ export default function ChatView() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [emails, setEmails] = useState<Email[]>([]);
+  const [prompts, setPrompts] = useState<Prompt[]>([]);
   const [selectedEmailId, setSelectedEmailId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    loadEmails();
+    loadData();
   }, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const loadEmails = async () => {
+  const loadData = async () => {
     try {
-      const data = await emailService.getAllEmails();
-      setEmails(data);
+      const [emailData, promptData] = await Promise.all([
+        emailService.getAllEmails(),
+        promptService.getAllPrompts(),
+      ]);
+      setEmails(emailData);
+      setPrompts(promptData);
     } catch (error) {
-      console.error('Error loading emails:', error);
+      console.error('Error loading chat data:', error);
     }
   };
 
@@ -57,7 +63,22 @@ export default function ChatView() {
         allEmails: emails
       };
 
-      const response = await llmService.chatWithAgent(userMessage, context);
+      // If the user message exactly matches a prompt name, run that prompt directly
+      const matchedPrompt = prompts.find(
+        (p) => p.name.toLowerCase() === userMessage.toLowerCase()
+      );
+
+      let response: string;
+      if (matchedPrompt) {
+        response = await llmService.runPromptOnEmail(matchedPrompt, {
+          email: selectedEmail,
+          allEmails: emails,
+          userMessage,
+        });
+      } else {
+        response = await llmService.chatWithAgent(userMessage, context);
+      }
+
       setMessages(prev => [...prev, { role: 'assistant', content: response }]);
     } catch (error) {
       console.error('Chat error:', error);

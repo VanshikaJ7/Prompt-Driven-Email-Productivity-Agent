@@ -97,6 +97,34 @@ Generate a professional reply email.`;
     }
   },
 
+  async runPromptOnEmail(prompt: Prompt, options: { email?: Email; allEmails?: Email[]; userMessage?: string }): Promise<string> {
+    const { email, allEmails, userMessage } = options;
+
+    let contextInfo = '';
+
+    if (email) {
+      contextInfo = `Email from: ${email.sender_name} <${email.sender}>
+Subject: ${email.subject}
+Body: ${email.body}
+Category: ${email.category || 'Not categorized'}`;
+    }
+
+    if (allEmails && allEmails.length > 0) {
+      contextInfo += `\n\nInbox Summary:
+Total emails: ${allEmails.length}
+Categories: ${this.getCategorySummary(allEmails)}`;
+    }
+
+    const userPrompt = `${contextInfo}
+
+Prompt instructions:
+${prompt.content}
+
+${userMessage ? `Additional user instruction: ${userMessage}` : ''}`;
+
+    return this.callClaude(userPrompt, 'You are an email assistant. Follow the provided prompt instructions exactly.');
+  },
+
   async chatWithAgent(userMessage: string, context?: { email?: Email; allEmails?: Email[] }): Promise<string> {
     let contextInfo = '';
 
