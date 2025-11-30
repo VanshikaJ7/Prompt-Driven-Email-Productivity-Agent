@@ -97,54 +97,74 @@ export default function InboxView() {
         return;
       }
 
-      let processedCount = 0;
-      let failedCount = 0;
+      const MAX_PASSES = 3;
+      let totalProcessed = 0;
+      let totalFailed = 0;
 
-      for (const email of emails) {
-        // Reprocess emails that are not processed OR that have no category/are Uncategorized
-        const needsProcessing =
-          !email.is_processed ||
-          !email.category ||
-          email.category.toLowerCase() === 'uncategorized';
+      for (let pass = 1; pass <= MAX_PASSES; pass++) {
+        const currentEmails = await emailService.getAllEmails();
 
-        if (!needsProcessing) continue;
+        let processedThisPass = 0;
+        let failedThisPass = 0;
 
-        try {
-          const category = await llmService.categorizeEmail(email, categorizationPrompt);
-          await emailService.updateEmail(email.id, {
-            category,
-            is_processed: true
-          });
+        for (const email of currentEmails) {
+          // Reprocess emails that are not processed OR that have no category/are Uncategorized
+          const needsProcessing =
+            !email.is_processed ||
+            !email.category ||
+            email.category.toLowerCase() === 'uncategorized';
 
-          const extractedItems = await llmService.extractActionItems(email, actionItemPrompt);
-          for (const item of extractedItems) {
-            await emailService.createActionItem({
-              email_id: email.id,
-              task: item.task,
-              deadline: item.deadline
+          if (!needsProcessing) continue;
+
+          try {
+            const category = await llmService.categorizeEmail(email, categorizationPrompt);
+            await emailService.updateEmail(email.id, {
+              category,
+              is_processed: true
             });
+
+            const extractedItems = await llmService.extractActionItems(email, actionItemPrompt);
+            for (const item of extractedItems) {
+              await emailService.createActionItem({
+                email_id: email.id,
+                task: item.task,
+                deadline: item.deadline
+              });
+            }
+
+            processedThisPass += 1;
+            totalProcessed += 1;
+
+            // Small delay to avoid hitting rate limits too quickly
+            await new Promise(resolve => setTimeout(resolve, 250));
+          } catch (err) {
+            console.error('Error processing individual email:', email.id, err);
+            failedThisPass += 1;
+            totalFailed += 1;
+            // Continue to next email instead of aborting the whole batch
           }
-
-          processedCount += 1;
-
-          // Small delay to avoid hitting rate limits too quickly
-          await new Promise(resolve => setTimeout(resolve, 250));
-        } catch (err) {
-          console.error('Error processing individual email:', email.id, err);
-          failedCount += 1;
-          // Continue to next email instead of aborting the whole batch
         }
+
+        // If there were no failures or no progress this pass, stop looping
+        if (failedThisPass === 0 || processedThisPass === 0) {
+          break;
+        }
+
+        // Optional small pause between passes
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
 
       await loadEmails();
 
-      if (processedCount > 0) {
-        if (failedCount > 0) {
-          alert(`Processed ${processedCount} emails. ${failedCount} failed; check console for details.`);
-        } else {
-          alert('All emails processed successfully!');
-        }
-      } else if (failedCount > 0) {
+      // Figure out how many emails still need processing
+      const finalEmails = await emailService.getAllEmails();
+      const remaining = finalEmails.filter(e => !e.is_processed || !e.category || e.category.toLowerCase() === 'uncategorized').length;
+
+      if (remaining === 0) {
+        alert('All emails processed successfully!');
+      } else if (totalProcessed > 0) {
+        alert(`Processed ${totalProcessed} emails. ${remaining} still need processing; check console for details.`);
+      } else if (totalFailed > 0) {
         alert('All emails failed to process. Please check the console for error details.');
       } else {
         alert('No emails needed processing.');
