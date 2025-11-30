@@ -90,7 +90,7 @@ export default function DraftsView() {
       setFormData(prev => ({
         ...prev,
         subject: `Re: ${email.subject}`,
-        body: replyBody,
+        body: bodyText,
         metadata: {
           ...(prev.metadata || {}),
           source: 'auto_reply',
