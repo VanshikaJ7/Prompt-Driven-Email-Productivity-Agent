@@ -83,6 +83,9 @@ export default function DraftsView() {
       }
 
       const replyBody = await llmService.generateReply(email, replyPrompt);
+      let bodyText = replyBody;
+      bodyText = bodyText.replace(/^subject[^\n]*\n?/i, '');
+      bodyText = bodyText.replace(/^body\s*:\s*/i, '').trim();
 
       setFormData(prev => ({
         ...prev,
